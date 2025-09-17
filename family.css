@@ -1,36 +1,94 @@
 :root{
-  --bg:#f7f8fb;
-  --card:#ffffff;
-  --muted:#666;
-  --accent:#1a73e8;
-  --maxw:900px;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  --bg:#0f1221;
+  --card:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  --muted:#99a0b3;
+  --accent:#6ea8fe;
+  --glass: rgba(255,255,255,0.03);
+  --maxw:980px;
+  --radius:14px;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
 }
 
+/* Reset */
 *{box-sizing:border-box}
 html,body{height:100%}
-body{margin:0;background:var(--bg);color:#111}
+body{margin:0;background:
+  radial-gradient(1000px 400px at 10% 10%, rgba(110,168,254,0.06), transparent 10%),
+  linear-gradient(180deg,#0b0d14 0%, #0f1221 100%); color:#e6eef8; -webkit-font-smoothing:antialiased;}
 .container{max-width:var(--maxw);margin:2rem auto;padding:1rem}
-.topbar{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(90deg,#fff,#fff);padding:.6rem 1rem;border-bottom:1px solid #eee}
-#site-title{margin:0;font-size:1.2rem}
-.user-dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:.5rem;vertical-align:middle}
-.card{background:var(--card);padding:1rem;border-radius:10px;box-shadow:0 1px 0 rgba(0,0,0,.04);margin-bottom:1rem}
-.row{display:flex;gap:.5rem;align-items:center}
+
+/* Hero / topbar */
+.topbar{position:relative;padding:0;border-bottom:0;border-radius:0 0 18px 18px;overflow:hidden}
+.hero{
+  background-image: url('https://hdqwalls.com/download/house-on-mountains-art-wallpaper-1920x1080.jpg');
+  background-size:cover;background-position:center;
+  min-height:120px;display:flex;align-items:center;
+}
+.hero-overlay{position:absolute;inset:0;background:linear-gradient(180deg, rgba(5,10,20,0.35), rgba(5,10,20,0.6));backdrop-filter: blur(6px);}
+.hero-inner{position:relative;display:flex;align-items:center;justify-content:space-between;width:100%;padding:1rem 1.5rem}
+#site-title{margin:0;font-size:1.5rem;letter-spacing:1px;color:#fff;text-shadow:0 2px 12px rgba(15,20,30,0.6)}
+.user-wrap{display:flex;gap:.6rem;align-items:center}
+.avatar-small{width:36px;height:36px;border-radius:10px;object-fit:cover;background:linear-gradient(135deg,#0b1222,#192233);box-shadow:0 4px 16px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.06)}
+
+/* Cards */
+.card{background:var(--glass);padding:1rem;border-radius:var(--radius);box-shadow:0 6px 30px rgba(2,6,23,0.6);margin-bottom:1rem;border:1px solid rgba(255,255,255,0.03)}
+.center-card{max-width:420px;margin:2rem auto;padding:1.2rem;text-align:center}
+.row{display:flex;gap:.6rem;align-items:center}
 .row.head{justify-content:space-between}
 .hidden{display:none}
-input,textarea,select,button{padding:.6rem;border:1px solid #e6e9ee;border-radius:8px;font-size:1rem}
+
+/* Inputs */
+input,textarea,select,button{padding:.6rem;border:1px solid rgba(255,255,255,0.06);border-radius:10px;font-size:1rem;background:transparent;color:inherit}
 input,select{width:100%;margin:.4rem 0}
 textarea{width:100%;min-height:80px;resize:vertical;margin:.5rem 0}
-button{background:var(--accent);color:#fff;border:none;cursor:pointer;border-radius:8px}
-.muted{color:var(--muted);font-size:.9rem}
-.post{margin-bottom:.75rem}
+button{background:linear-gradient(90deg,var(--accent),#8bd0ff);color:#061023;border:none;cursor:pointer;border-radius:10px;padding:.6rem .8rem;font-weight:600;box-shadow:0 6px 18px rgba(106,148,255,0.12)}
+
+/* Muted text */
+.muted{color:var(--muted);font-size:.95rem}
+.post{margin-bottom:.75rem;border-radius:12px;padding:.75rem}
 .post-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem}
-.post-body{white-space:pre-wrap;margin-bottom:.5rem}
+.post-left{display:flex;gap:.6rem;align-items:center}
+.post-avatar{width:48px;height:48px;border-radius:10px;object-fit:cover;background:linear-gradient(135deg,#071022,#153046);border:1px solid rgba(255,255,255,0.04)}
+.post-meta{color:var(--muted);font-size:.85rem}
+.post-body{white-space:pre-wrap;margin-bottom:.5rem;color:#e6eef8}
 .post-actions{display:flex;gap:.5rem}
-.comment{padding:.5rem;border-top:1px dashed #eee;margin-top:.5rem}
+.comment{padding:.5rem;border-top:1px dashed rgba(255,255,255,0.03);margin-top:.5rem}
 .meta{color:var(--muted);font-size:.85rem}
 .small{font-size:.8rem;color:var(--muted)}
-.dialog{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:#fff;padding:1rem;border-radius:10px;box-shadow:0 6px 30px rgba(0,0,0,.2);z-index:1000;min-width:280px}
-.poll .poll-options button{display:block;width:100%;margin:.3rem 0;background:linear-gradient(90deg,#fff,#f3f7ff);color:#111;border:1px solid #e6e9ee}
-.msg .meta{margin-bottom:.4rem}
+
+/* Dialogs */
+.dialog{border-radius:12px;padding:1rem;background:linear-gradient(180deg,#0b1220,#071023);color:inherit;border:1px solid rgba(255,255,255,0.04)}
+.dialog-inner{display:flex;flex-direction:column;gap:.6rem}
+.file-input{background:linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:.4rem;border-radius:8px}
+
+/* Room background applied when logged in */
+.room-card{position:relative;overflow:hidden}
+.room-card::before{
+  content:"";
+  position:absolute;inset:0;
+  background-image: url('https://moewalls.com/wp-content/uploads/2022/06/messy-room-by-night-live-wallpaper-1920x1080.jpg');
+  background-size:cover;background-position:center;opacity:.12;filter:grayscale(20%) blur(0.6px);
+  z-index:0;border-radius:var(--radius);
+}
+.room-inner{position:relative;z-index:1}
+
+/* Post image */
+.post-image-wrap{margin-top:.6rem}
+.post-image{width:100%;border-radius:10px;object-fit:cover;border:1px solid rgba(255,255,255,0.04)}
+
+/* Message image */
+.message-image-wrap{margin-top:.5rem}
+.message-image{max-width:220px;border-radius:8px;display:block}
+
+/* Image preview */
+.img-preview{margin-top:.5rem}
+.img-preview-inner{width:120px;height:80px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,0.04)}
+
+/* Responsive */
+@media (max-width:600px){
+  .hero-inner{padding:.8rem}
+  .container{margin:1rem}
+  .avatar-small{width:32px;height:32px}
+}
+
 
