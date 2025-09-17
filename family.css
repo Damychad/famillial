@@ -33,3 +33,4 @@ button{background:var(--accent);color:#fff;border:none;cursor:pointer;border-rad
 .dialog{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:#fff;padding:1rem;border-radius:10px;box-shadow:0 6px 30px rgba(0,0,0,.2);z-index:1000;min-width:280px}
 .poll .poll-options button{display:block;width:100%;margin:.3rem 0;background:linear-gradient(90deg,#fff,#f3f7ff);color:#111;border:1px solid #e6e9ee}
 .msg .meta{margin-bottom:.4rem}
+
