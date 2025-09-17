@@ -7,13 +7,16 @@
   <link rel="stylesheet" href="family.css">
 </head>
 <body>
-  <header class="topbar">
-    <h1 id="site-title">Famille</h1>
-    <div id="user-area"></div>
+  <header class="topbar hero">
+    <div class="hero-overlay"></div>
+    <div class="hero-inner">
+      <h1 id="site-title">Famille</h1>
+      <div id="user-area"></div>
+    </div>
   </header>
 
   <main class="container">
-    <section id="login-section" class="card">
+    <section id="login-section" class="card center-card">
       <h2>Sign in</h2>
       <input id="login-user" placeholder="Username" autocomplete="username">
       <input id="login-pass" placeholder="Password" type="password" autocomplete="current-password">
@@ -35,13 +38,18 @@
       <div id="posts"></div>
     </section>
 
-    <section id="room-section" class="hidden card">
-      <h2 id="room-title">My Room</h2>
-      <div id="messages"></div>
-      <textarea id="msg-input" placeholder="Write a private message (admin can send to others)"></textarea>
-      <div class="row">
-        <select id="msg-recipient" class="hidden"></select>
-        <button id="btn-send-msg">Send</button>
+    <section id="room-section" class="hidden card room-card">
+      <div class="room-inner">
+        <h2 id="room-title">My Room</h2>
+        <div id="messages"></div>
+        <textarea id="msg-input" placeholder="Write a private message (admin can send to others)"></textarea>
+
+        <div class="row">
+          <select id="msg-recipient" class="hidden"></select>
+          <input type="file" id="msg-image" accept="image/*" class="file-input">
+          <button id="btn-send-msg">Send</button>
+        </div>
+        <div id="msg-preview" class="img-preview hidden"></div>
       </div>
     </section>
   </main>
@@ -50,14 +58,20 @@
   <template id="post-template">
     <article class="card post">
       <div class="post-head">
-        <strong class="post-title"></strong>
-        <span class="post-meta"></span>
+        <div class="post-left">
+          <img class="post-avatar" alt="author avatar">
+          <div>
+            <strong class="post-title"></strong>
+            <div class="post-meta"></div>
+          </div>
+        </div>
+        <div class="post-right">
+          <button class="btn-comment">Comment</button>
+          <button class="btn-view-poll hidden">Vote / Results</button>
+        </div>
       </div>
       <div class="post-body"></div>
-      <div class="post-actions">
-        <button class="btn-comment">Comment</button>
-        <button class="btn-view-poll hidden">Vote / Results</button>
-      </div>
+      <div class="post-image-wrap hidden"></div>
       <div class="comments hidden"></div>
     </article>
   </template>
@@ -69,10 +83,22 @@
     </div>
   </template>
 
+  <dialog id="profile-dialog" class="dialog">
+    <form method="dialog" class="dialog-inner">
+      <h3>Edit profile</h3>
+      <div class="row">
+        <label class="file-label">Upload avatar<input id="avatar-input" type="file" accept="image/*" class="file-input"></label>
+        <div id="avatar-preview" class="img-preview"></div>
+      </div>
+      <menu>
+        <button id="profile-close">Close</button>
+      </menu>
+    </form>
+  </dialog>
+
   <script>
 /* ----------------------------
-  Simple client-side family site
-  Accounts provided by user (hard-coded)
+  Simple client-side family site (enhanced)
   ---------------------------- */
 
 const ACCOUNTS = [
@@ -92,20 +118,19 @@ function loadState(){
 function saveState(s){ localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
 
 let state = loadState();
-// initialize if missing
-state.posts = state.posts || []; // posts: { id, title, body, author, kind:'news'|'poll', options:[{id,label}], votes:{optionId:[usernames]}, createdAt, comments: [{user,text,date}] }
-state.messages = state.messages || []; // messages: { id, sender, recipient, body, date, read }
-state.users = state.users || ACCOUNTS.map(a=>({ username:a.username, role:a.role, color:a.color }));
+state.posts = state.posts || [];
+state.messages = state.messages || [];
+state.users = state.users || ACCOUNTS.map(a=>({ username:a.username, role:a.role, color:a.color, avatar:null }));
 saveState(state);
 
-let currentUser = null; // {username,role,color} or null
+let currentUser = null;
 
-/* ---------- Helpers ---------- */
+/* Helpers */
 const el = id => document.getElementById(id);
 const uid = () => 'id'+Math.random().toString(36).slice(2,9);
 const fmtDate = d => new Date(d).toLocaleString();
 
-/* ---------- UI nodes ---------- */
+/* UI nodes */
 const loginSection = el('login-section');
 const boardSection = el('board-section');
 const roomSection = el('room-section');
@@ -113,11 +138,12 @@ const userArea = el('user-area');
 const postsEl = el('posts');
 const messagesEl = el('messages');
 const msgRecipient = el('msg-recipient');
+const avatarDialog = el('profile-dialog');
 
 const postTpl = document.getElementById('post-template');
 const pollTpl = document.getElementById('poll-template');
 
-/* ---------- Auth ---------- */
+/* Auth */
 function showMessage(txt, elId='login-msg'){ el(elId).textContent = txt; setTimeout(()=>{ if(el(elId).textContent===txt) el(elId).textContent=''; },3000); }
 
 el('btn-login').addEventListener('click', () => {
@@ -139,30 +165,75 @@ function onLogin(){
   loginSection.classList.add('hidden');
   boardSection.classList.remove('hidden');
   roomSection.classList.remove('hidden');
+  document.body.classList.add('room-active');
   renderUserArea();
   renderPosts();
   renderMessages();
   renderRecipientOptions();
-  // admin controls
   document.getElementById('btn-new-post').style.display = currentUser.role === 'admin' ? 'inline-block' : 'none';
   document.getElementById('btn-new-poll').style.display = currentUser.role === 'admin' ? 'inline-block' : 'none';
 }
 
-/* ---------- User area ---------- */
+/* User area */
 function renderUserArea(){
   userArea.innerHTML = '';
-  const dot = document.createElement('span');
-  dot.className = 'user-dot';
-  dot.style.background = currentUser.color;
+  const userWrap = document.createElement('div'); userWrap.className='user-wrap';
+  const dot = document.createElement('img');
+  dot.className = 'user-dot avatar-small';
+  const urec = state.users.find(u=>u.username===currentUser.username);
+  if(urec && urec.avatar) dot.src = urec.avatar;
+  else dot.src = '';
+
   const name = document.createElement('span');
   name.textContent = currentUser.username + (currentUser.role === 'admin' ? ' (admin)' : '');
   const out = document.createElement('button');
   out.textContent = 'Logout';
-  out.onclick = () => { currentUser = null; loginSection.classList.remove('hidden'); boardSection.classList.add('hidden'); roomSection.classList.add('hidden'); userArea.innerHTML=''; };
-  userArea.appendChild(dot); userArea.appendChild(name); userArea.appendChild(out);
+  out.onclick = () => {
+    currentUser = null;
+    loginSection.classList.remove('hidden');
+    boardSection.classList.add('hidden');
+    roomSection.classList.add('hidden');
+    userArea.innerHTML='';
+    document.body.classList.remove('room-active');
+  };
+
+  const edit = document.createElement('button');
+  edit.textContent = 'Edit profile';
+  edit.onclick = () => openProfileDialog();
+
+  userWrap.appendChild(dot); userWrap.appendChild(name); userWrap.appendChild(edit); userWrap.appendChild(out);
+  userArea.appendChild(userWrap);
 }
 
-/* ---------- Posts (news + polls) ---------- */
+/* Profile dialog */
+function openProfileDialog(){
+  const avatarInput = el('avatar-input');
+  const preview = el('avatar-preview');
+  const urec = state.users.find(u=>u.username===currentUser.username);
+  preview.innerHTML = '';
+  if(urec && urec.avatar){
+    const img = document.createElement('img'); img.src = urec.avatar; img.className='img-preview-inner'; preview.appendChild(img);
+  }
+  avatarInput.onchange = (e) => {
+    const f = e.target.files[0]; if(!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const data = reader.result;
+      preview.innerHTML = `<img src="${data}" class="img-preview-inner">`;
+      urec.avatar = data;
+      const uidx = state.users.findIndex(x=>x.username===urec.username);
+      if(uidx>-1) state.users[uidx] = urec;
+      saveState(state);
+      renderUserArea();
+      renderPosts();
+    };
+    reader.readAsDataURL(f);
+  };
+  avatarDialog.showModal();
+  el('profile-close').onclick = () => avatarDialog.close();
+}
+
+/* Posts */
 function renderPosts(){
   postsEl.innerHTML = '';
   const sorted = state.posts.slice().sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
@@ -171,8 +242,18 @@ function renderPosts(){
     node.querySelector('.post-title').textContent = p.title;
     node.querySelector('.post-meta').textContent = `${p.author} • ${fmtDate(p.createdAt)}`;
     node.querySelector('.post-body').textContent = p.body || '';
+
+    const avatarEl = node.querySelector('.post-avatar');
+    const urec = state.users.find(u=>u.username===p.author);
+    if(urec && urec.avatar) { avatarEl.src = urec.avatar; } else { avatarEl.src = ''; avatarEl.alt = p.author[0] || 'U'; }
+
+    const imgWrap = node.querySelector('.post-image-wrap');
+    if(p.image){
+      imgWrap.classList.remove('hidden');
+      imgWrap.innerHTML = `<img src="${p.image}" alt="post image" class="post-image">`;
+    } else imgWrap.classList.add('hidden');
+
     const postEl = node.querySelector('article');
-    // comments
     const commentsWrap = postEl.querySelector('.comments');
     if(p.comments && p.comments.length){
       commentsWrap.classList.remove('hidden');
@@ -184,7 +265,6 @@ function renderPosts(){
       });
     } else commentsWrap.classList.add('hidden');
 
-    // comment button
     const btnComment = postEl.querySelector('.btn-comment');
     btnComment.onclick = () => {
       const txt = prompt('Comment text');
@@ -195,7 +275,6 @@ function renderPosts(){
       renderPosts();
     };
 
-    // poll handling
     const btnPoll = postEl.querySelector('.btn-view-poll');
     if(p.kind === 'poll'){
       btnPoll.classList.remove('hidden');
@@ -208,21 +287,19 @@ function renderPosts(){
 
 function savePosts(){ state.posts = state.posts; saveState(state); }
 
-/* ---------- Poll UI ---------- */
+/* Poll UI (unchanged) */
 function showPollDialog(p){
   const dlg = document.createElement('div');
   dlg.className='dialog';
   const pollNode = pollTpl.content.cloneNode(true);
   const optWrap = pollNode.querySelector('.poll-options');
   const resWrap = pollNode.querySelector('.poll-results');
-  // build options
   p.options.forEach(opt => {
     const id = opt.id;
     const btn = document.createElement('button');
     btn.textContent = opt.label;
     btn.onclick = () => {
       p.votes = p.votes || {};
-      // remove user vote from other options
       Object.keys(p.votes).forEach(k => { p.votes[k] = (p.votes[k]||[]).filter(u=>u!==currentUser.username); });
       p.votes[id] = p.votes[id] || [];
       if(!p.votes[id].includes(currentUser.username)) p.votes[id].push(currentUser.username);
@@ -253,7 +330,7 @@ function showPollDialog(p){
   document.body.appendChild(dlg);
 }
 
-/* ---------- Messages (private rooms) ---------- */
+/* Messages */
 function renderMessages(){
   messagesEl.innerHTML = '';
   const mine = state.messages.filter(m => m.recipient === currentUser.username || m.sender === currentUser.username)
@@ -262,33 +339,60 @@ function renderMessages(){
   else {
     mine.forEach(m=>{
       const card = document.createElement('div'); card.className='card msg';
-      card.innerHTML = `<div class="meta"><strong style="color:${getUserColor(m.sender)}">${m.sender}</strong> → <strong style="color:${getUserColor(m.recipient)}">${m.recipient}</strong> <span class="small">${fmtDate(m.date)}</span></div><div>${escapeHtml(m.body)}</div>`;
+      let imgHtml = '';
+      if(m.image) imgHtml = `<div class="message-image-wrap"><img src="${m.image}" class="message-image"></div>`;
+      card.innerHTML = `<div class="meta"><strong style="color:${getUserColor(m.sender)}">${m.sender}</strong> → <strong style="color:${getUserColor(m.recipient)}">${m.recipient}</strong> <span class="small">${fmtDate(m.date)}</span></div><div>${escapeHtml(m.body)}</div>${imgHtml}`;
       messagesEl.appendChild(card);
     });
   }
 }
 
+/* Send message with optional image */
 el('btn-send-msg').addEventListener('click', () => {
   const body = el('msg-input').value.trim();
-  if(!body) return;
+  const fileInput = el('msg-image');
+  const file = fileInput.files && fileInput.files[0];
+  if(!body && !file) return;
   let recipient = currentUser.username;
-  if(currentUser.role==='admin'){
-    recipient = msgRecipient.value || currentUser.username;
+  if(currentUser.role==='admin') recipient = msgRecipient.value || currentUser.username;
+
+  if(file){
+    const reader = new FileReader();
+    reader.onload = () => {
+      state.messages.push({ id: uid(), sender: currentUser.username, recipient, body, date: new Date().toISOString(), read: false, image: reader.result });
+      saveState(state);
+      el('msg-input').value=''; fileInput.value=''; el('msg-preview').classList.add('hidden'); renderMessages();
+    };
+    reader.readAsDataURL(file);
+  } else {
+    state.messages.push({ id: uid(), sender: currentUser.username, recipient, body, date: new Date().toISOString(), read: false });
+    saveState(state);
+    el('msg-input').value='';
+    renderMessages();
   }
-  state.messages.push({ id: uid(), sender: currentUser.username, recipient, body, date: new Date().toISOString(), read: false });
-  saveState(state);
-  el('msg-input').value='';
-  renderMessages();
 });
 
-/* ---------- New post / poll (admin only) ---------- */
+/* New post / poll */
 el('btn-new-post').addEventListener('click', () => {
   if(currentUser.role !== 'admin') return alert('Only admin can post news.');
   const title = prompt('Post title');
   if(!title) return;
   const body = prompt('Post body (optional)');
-  const post = { id: uid(), title, body, author: currentUser.username, kind: 'news', createdAt: new Date().toISOString(), comments: [] };
-  state.posts.push(post); savePosts(); renderPosts();
+  const attach = confirm('Attach an image to this post? (select OK to choose file)');
+  if(attach){
+    const inp = document.createElement('input'); inp.type='file'; inp.accept='image/*';
+    inp.onchange = (e) => {
+      const f = e.target.files[0]; if(!f) return;
+      const r = new FileReader(); r.onload = () => {
+        const post = { id: uid(), title, body, author: currentUser.username, kind: 'news', image: r.result, createdAt: new Date().toISOString(), comments: [] };
+        state.posts.push(post); savePosts(); renderPosts();
+      }; r.readAsDataURL(f);
+    };
+    inp.click();
+  } else {
+    const post = { id: uid(), title, body, author: currentUser.username, kind: 'news', createdAt: new Date().toISOString(), comments: [] };
+    state.posts.push(post); savePosts(); renderPosts();
+  }
 });
 
 el('btn-new-poll').addEventListener('click', () => {
@@ -303,7 +407,7 @@ el('btn-new-poll').addEventListener('click', () => {
   state.posts.push(post); savePosts(); renderPosts();
 });
 
-/* ---------- Utilities ---------- */
+/* Utilities */
 function getUserColor(username){
   const u = state.users.find(x=>x.username===username);
   return u ? u.color : '#333';
@@ -317,50 +421,15 @@ function renderRecipientOptions(){
   msgRecipient.classList.toggle('hidden', currentUser.role!=='admin');
 }
 
-/* ---------- small helpers ---------- */
+/* Message image preview */
+el('msg-image').addEventListener('change', (e)=>{
+  const f = e.target.files[0]; const p = el('msg-preview');
+  if(!f){ p.classList.add('hidden'); return; }
+  const r = new FileReader(); r.onload=()=>{ p.innerHTML = `<img src="${r.result}" class="img-preview-inner">`; p.classList.remove('hidden'); }; r.readAsDataURL(f);
+});
+
+/* Helpers */
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
-
-/* ---------- On load: if previous user saved? ---------- */
-// no auto-login for simplicity. Show login form.
-
 </script>
 </body>
 </html>
-<style.css>
-:root{
-  --bg:#f7f8fb;
-  --card:#ffffff;
-  --muted:#666;
-  --accent:#1a73e8;
-  --maxw:900px;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-}
-
-*{box-sizing:border-box}
-html,body{height:100%}
-body{margin:0;background:var(--bg);color:#111}
-.container{max-width:var(--maxw);margin:2rem auto;padding:1rem}
-.topbar{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(90deg,#fff,#fff);padding:.6rem 1rem;border-bottom:1px solid #eee}
-#site-title{margin:0;font-size:1.2rem}
-.user-dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:.5rem;vertical-align:middle}
-.card{background:var(--card);padding:1rem;border-radius:10px;box-shadow:0 1px 0 rgba(0,0,0,.04);margin-bottom:1rem}
-.row{display:flex;gap:.5rem;align-items:center}
-.row.head{justify-content:space-between}
-.hidden{display:none}
-input,textarea,select,button{padding:.6rem;border:1px solid #e6e9ee;border-radius:8px;font-size:1rem}
-input,select{width:100%;margin:.4rem 0}
-textarea{width:100%;min-height:80px;resize:vertical;margin:.5rem 0}
-button{background:var(--accent);color:#fff;border:none;cursor:pointer;border-radius:8px}
-.muted{color:var(--muted);font-size:.9rem}
-.post{margin-bottom:.75rem}
-.post-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem}
-.post-body{white-space:pre-wrap;margin-bottom:.5rem}
-.post-actions{display:flex;gap:.5rem}
-.comment{padding:.5rem;border-top:1px dashed #eee;margin-top:.5rem}
-.meta{color:var(--muted);font-size:.85rem}
-.small{font-size:.8rem;color:var(--muted)}
-.dialog{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:#fff;padding:1rem;border-radius:10px;box-shadow:0 6px 30px rgba(0,0,0,.2);z-index:1000;min-width:280px}
-.poll .poll-options button{display:block;width:100%;margin:.3rem 0;background:linear-gradient(90deg,#fff,#f3f7ff);color:#111;border:1px solid #e6e9ee}
-.msg .meta{margin-bottom:.4rem}
-</style.css>
-
