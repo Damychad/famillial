@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Famille</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1 id="site-title">Famille</h1>
+    <div id="user-area"></div>
+  </header>
+
+  <main class="container">
+    <section id="login-section" class="card">
+      <h2>Sign in</h2>
+      <input id="login-user" placeholder="Username" autocomplete="username">
+      <input id="login-pass" placeholder="Password" type="password" autocomplete="current-password">
+      <div class="row">
+        <button id="btn-login">Sign in</button>
+        <button id="btn-guest">Continue as Guest</button>
+      </div>
+      <p id="login-msg" class="muted"></p>
+    </section>
+
+    <section id="board-section" class="hidden">
+      <div class="row head">
+        <h2>Main Board</h2>
+        <div>
+          <button id="btn-new-post">New Post</button>
+          <button id="btn-new-poll">New Poll</button>
+        </div>
+      </div>
+      <div id="posts"></div>
+    </section>
+
+    <section id="room-section" class="hidden card">
+      <h2 id="room-title">My Room</h2>
+      <div id="messages"></div>
+      <textarea id="msg-input" placeholder="Write a private message (admin can send to others)"></textarea>
+      <div class="row">
+        <select id="msg-recipient" class="hidden"></select>
+        <button id="btn-send-msg">Send</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Templates -->
+  <template id="post-template">
+    <article class="card post">
+      <div class="post-head">
+        <strong class="post-title"></strong>
+        <span class="post-meta"></span>
+      </div>
+      <div class="post-body"></div>
+      <div class="post-actions">
+        <button class="btn-comment">Comment</button>
+        <button class="btn-view-poll hidden">Vote / Results</button>
+      </div>
+      <div class="comments hidden"></div>
+    </article>
+  </template>
+
+  <template id="poll-template">
+    <div class="poll card">
+      <div class="poll-options"></div>
+      <div class="poll-results hidden"></div>
+    </div>
+  </template>
+
+  <script>
+/* ----------------------------
+  Simple client-side family site
+  Accounts provided by user (hard-coded)
+  ---------------------------- */
+
+const ACCOUNTS = [
+  { username: 'Damien', password: 'Admin13072005', role: 'admin', color: '#1a73e8' }, // blue
+  { username: 'Sami', password: 'Sami07112009', role: 'user', color: '#e53935' },     // red
+  { username: 'Aymane', password: 'Sprigganlord65.', role: 'user', color: '#00bcd4' },// cyan
+  { username: 'Errassime', password: 'papa19021972', role: 'user', color: '#2e7d32' }, // green
+  { username: 'Saadia', password: 'mama29041967', role: 'user', color: '#8e24aa' },   // purple
+  { username: 'Rayan', password: 'sprigganlord65', role: 'user', color: '#616161' }   // grey
+];
+
+const STORAGE_KEY = 'famille_app_v1';
+
+function loadState(){
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch(e){ return {}; }
+}
+function saveState(s){ localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
+
+let state = loadState();
+// initialize if missing
+state.posts = state.posts || []; // posts: { id, title, body, author, kind:'news'|'poll', options:[{id,label}], votes:{optionId:[usernames]}, createdAt, comments: [{user,text,date}] }
+state.messages = state.messages || []; // messages: { id, sender, recipient, body, date, read }
+state.users = state.users || ACCOUNTS.map(a=>({ username:a.username, role:a.role, color:a.color }));
+saveState(state);
+
+let currentUser = null; // {username,role,color} or null
+
+/* ---------- Helpers ---------- */
+const el = id => document.getElementById(id);
+const uid = () => 'id'+Math.random().toString(36).slice(2,9);
+const fmtDate = d => new Date(d).toLocaleString();
+
+/* ---------- UI nodes ---------- */
+const loginSection = el('login-section');
+const boardSection = el('board-section');
+const roomSection = el('room-section');
+const userArea = el('user-area');
+const postsEl = el('posts');
+const messagesEl = el('messages');
+const msgRecipient = el('msg-recipient');
+
+const postTpl = document.getElementById('post-template');
+const pollTpl = document.getElementById('poll-template');
+
+/* ---------- Auth ---------- */
+function showMessage(txt, elId='login-msg'){ el(elId).textContent = txt; setTimeout(()=>{ if(el(elId).textContent===txt) el(elId).textContent=''; },3000); }
+
+el('btn-login').addEventListener('click', () => {
+  const u = el('login-user').value.trim();
+  const p = el('login-pass').value;
+  if(!u||!p) return showMessage('Enter username and password');
+  const acc = ACCOUNTS.find(a => a.username === u && a.password === p);
+  if(!acc) return showMessage('Invalid credentials');
+  currentUser = { username: acc.username, role: acc.role, color: acc.color };
+  onLogin();
+});
+
+el('btn-guest').addEventListener('click', () => {
+  currentUser = { username: 'Guest', role: 'guest', color:'#333' };
+  onLogin();
+});
+
+function onLogin(){
+  loginSection.classList.add('hidden');
+  boardSection.classList.remove('hidden');
+  roomSection.classList.remove('hidden');
+  renderUserArea();
+  renderPosts();
+  renderMessages();
+  renderRecipientOptions();
+  // admin controls
+  document.getElementById('btn-new-post').style.display = currentUser.role === 'admin' ? 'inline-block' : 'none';
+  document.getElementById('btn-new-poll').style.display = currentUser.role === 'admin' ? 'inline-block' : 'none';
+}
+
+/* ---------- User area ---------- */
+function renderUserArea(){
+  userArea.innerHTML = '';
+  const dot = document.createElement('span');
+  dot.className = 'user-dot';
+  dot.style.background = currentUser.color;
+  const name = document.createElement('span');
+  name.textContent = currentUser.username + (currentUser.role === 'admin' ? ' (admin)' : '');
+  const out = document.createElement('button');
+  out.textContent = 'Logout';
+  out.onclick = () => { currentUser = null; loginSection.classList.remove('hidden'); boardSection.classList.add('hidden'); roomSection.classList.add('hidden'); userArea.innerHTML=''; };
+  userArea.appendChild(dot); userArea.appendChild(name); userArea.appendChild(out);
+}
+
+/* ---------- Posts (news + polls) ---------- */
+function renderPosts(){
+  postsEl.innerHTML = '';
+  const sorted = state.posts.slice().sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
+  sorted.forEach(p => {
+    const node = postTpl.content.cloneNode(true);
+    node.querySelector('.post-title').textContent = p.title;
+    node.querySelector('.post-meta').textContent = `${p.author} • ${fmtDate(p.createdAt)}`;
+    node.querySelector('.post-body').textContent = p.body || '';
+    const postEl = node.querySelector('article');
+    // comments
+    const commentsWrap = postEl.querySelector('.comments');
+    if(p.comments && p.comments.length){
+      commentsWrap.classList.remove('hidden');
+      commentsWrap.innerHTML = '';
+      p.comments.forEach(c => {
+        const cdiv = document.createElement('div'); cdiv.className='comment';
+        cdiv.innerHTML = `<strong style="color:${getUserColor(c.user)}">${c.user}</strong> <span class="meta">${fmtDate(c.date)}</span><div>${escapeHtml(c.text)}</div>`;
+        commentsWrap.appendChild(cdiv);
+      });
+    } else commentsWrap.classList.add('hidden');
+
+    // comment button
+    const btnComment = postEl.querySelector('.btn-comment');
+    btnComment.onclick = () => {
+      const txt = prompt('Comment text');
+      if(!txt) return;
+      p.comments = p.comments || [];
+      p.comments.push({ user: currentUser.username, text: txt, date: new Date().toISOString() });
+      savePosts();
+      renderPosts();
+    };
+
+    // poll handling
+    const btnPoll = postEl.querySelector('.btn-view-poll');
+    if(p.kind === 'poll'){
+      btnPoll.classList.remove('hidden');
+      btnPoll.onclick = () => showPollDialog(p);
+    } else btnPoll.classList.add('hidden');
+
+    postsEl.appendChild(node);
+  });
+}
+
+function savePosts(){ state.posts = state.posts; saveState(state); }
+
+/* ---------- Poll UI ---------- */
+function showPollDialog(p){
+  const dlg = document.createElement('div');
+  dlg.className='dialog';
+  const pollNode = pollTpl.content.cloneNode(true);
+  const optWrap = pollNode.querySelector('.poll-options');
+  const resWrap = pollNode.querySelector('.poll-results');
+  // build options
+  p.options.forEach(opt => {
+    const id = opt.id;
+    const btn = document.createElement('button');
+    btn.textContent = opt.label;
+    btn.onclick = () => {
+      p.votes = p.votes || {};
+      // remove user vote from other options
+      Object.keys(p.votes).forEach(k => { p.votes[k] = (p.votes[k]||[]).filter(u=>u!==currentUser.username); });
+      p.votes[id] = p.votes[id] || [];
+      if(!p.votes[id].includes(currentUser.username)) p.votes[id].push(currentUser.username);
+      savePosts();
+      renderPosts();
+      showResults();
+    };
+    optWrap.appendChild(btn);
+  });
+  function showResults(){
+    resWrap.classList.remove('hidden');
+    resWrap.innerHTML = '';
+    const totals = {};
+    (p.options||[]).forEach(o=> totals[o.id]= (p.votes && p.votes[o.id]) ? p.votes[o.id].length : 0);
+    const sum = Object.values(totals).reduce((a,b)=>a+b,0) || 0;
+    (p.options||[]).forEach(o=>{
+      const row = document.createElement('div');
+      const count = totals[o.id];
+      const pct = sum ? Math.round(count/sum*100) : 0;
+      row.innerHTML = `<strong>${o.label}</strong> — ${count} votes (${pct}%)`;
+      resWrap.appendChild(row);
+    });
+  }
+  showResults();
+  dlg.appendChild(pollNode);
+  const close = document.createElement('button'); close.textContent='Close'; close.onclick=()=>dlg.remove();
+  dlg.appendChild(close);
+  document.body.appendChild(dlg);
+}
+
+/* ---------- Messages (private rooms) ---------- */
+function renderMessages(){
+  messagesEl.innerHTML = '';
+  const mine = state.messages.filter(m => m.recipient === currentUser.username || m.sender === currentUser.username)
+                            .sort((a,b)=> new Date(b.date)-new Date(a.date));
+  if(mine.length===0) messagesEl.textContent = 'No messages';
+  else {
+    mine.forEach(m=>{
+      const card = document.createElement('div'); card.className='card msg';
+      card.innerHTML = `<div class="meta"><strong style="color:${getUserColor(m.sender)}">${m.sender}</strong> → <strong style="color:${getUserColor(m.recipient)}">${m.recipient}</strong> <span class="small">${fmtDate(m.date)}</span></div><div>${escapeHtml(m.body)}</div>`;
+      messagesEl.appendChild(card);
+    });
+  }
+}
+
+el('btn-send-msg').addEventListener('click', () => {
+  const body = el('msg-input').value.trim();
+  if(!body) return;
+  let recipient = currentUser.username;
+  if(currentUser.role==='admin'){
+    recipient = msgRecipient.value || currentUser.username;
+  }
+  state.messages.push({ id: uid(), sender: currentUser.username, recipient, body, date: new Date().toISOString(), read: false });
+  saveState(state);
+  el('msg-input').value='';
+  renderMessages();
+});
+
+/* ---------- New post / poll (admin only) ---------- */
+el('btn-new-post').addEventListener('click', () => {
+  if(currentUser.role !== 'admin') return alert('Only admin can post news.');
+  const title = prompt('Post title');
+  if(!title) return;
+  const body = prompt('Post body (optional)');
+  const post = { id: uid(), title, body, author: currentUser.username, kind: 'news', createdAt: new Date().toISOString(), comments: [] };
+  state.posts.push(post); savePosts(); renderPosts();
+});
+
+el('btn-new-poll').addEventListener('click', () => {
+  if(currentUser.role !== 'admin') return alert('Only admin can create polls.');
+  const title = prompt('Poll title');
+  if(!title) return;
+  const raw = prompt('Enter options separated by | (e.g. Yes|No|Maybe)');
+  if(!raw) return;
+  const parts = raw.split('|').map(s=>s.trim()).filter(Boolean);
+  const options = parts.map(p=>({ id: uid(), label: p }));
+  const post = { id: uid(), title, body: '', author: currentUser.username, kind: 'poll', options, votes: {}, createdAt: new Date().toISOString(), comments: [] };
+  state.posts.push(post); savePosts(); renderPosts();
+});
+
+/* ---------- Utilities ---------- */
+function getUserColor(username){
+  const u = state.users.find(x=>x.username===username);
+  return u ? u.color : '#333';
+}
+function renderRecipientOptions(){
+  msgRecipient.innerHTML = '';
+  state.users.forEach(u=>{
+    const opt = document.createElement('option'); opt.value = u.username; opt.textContent = u.username;
+    msgRecipient.appendChild(opt);
+  });
+  msgRecipient.classList.toggle('hidden', currentUser.role!=='admin');
+}
+
+/* ---------- small helpers ---------- */
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+
+/* ---------- On load: if previous user saved? ---------- */
+// no auto-login for simplicity. Show login form.
+
+</script>
+</body>
+</html>
+<style.css>
+:root{
+  --bg:#f7f8fb;
+  --card:#ffffff;
+  --muted:#666;
+  --accent:#1a73e8;
+  --maxw:900px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:#111}
+.container{max-width:var(--maxw);margin:2rem auto;padding:1rem}
+.topbar{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(90deg,#fff,#fff);padding:.6rem 1rem;border-bottom:1px solid #eee}
+#site-title{margin:0;font-size:1.2rem}
+.user-dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:.5rem;vertical-align:middle}
+.card{background:var(--card);padding:1rem;border-radius:10px;box-shadow:0 1px 0 rgba(0,0,0,.04);margin-bottom:1rem}
+.row{display:flex;gap:.5rem;align-items:center}
+.row.head{justify-content:space-between}
+.hidden{display:none}
+input,textarea,select,button{padding:.6rem;border:1px solid #e6e9ee;border-radius:8px;font-size:1rem}
+input,select{width:100%;margin:.4rem 0}
+textarea{width:100%;min-height:80px;resize:vertical;margin:.5rem 0}
+button{background:var(--accent);color:#fff;border:none;cursor:pointer;border-radius:8px}
+.muted{color:var(--muted);font-size:.9rem}
+.post{margin-bottom:.75rem}
+.post-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem}
+.post-body{white-space:pre-wrap;margin-bottom:.5rem}
+.post-actions{display:flex;gap:.5rem}
+.comment{padding:.5rem;border-top:1px dashed #eee;margin-top:.5rem}
+.meta{color:var(--muted);font-size:.85rem}
+.small{font-size:.8rem;color:var(--muted)}
+.dialog{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:#fff;padding:1rem;border-radius:10px;box-shadow:0 6px 30px rgba(0,0,0,.2);z-index:1000;min-width:280px}
+.poll .poll-options button{display:block;width:100%;margin:.3rem 0;background:linear-gradient(90deg,#fff,#f3f7ff);color:#111;border:1px solid #e6e9ee}
+.msg .meta{margin-bottom:.4rem}
+</style.css>
+
