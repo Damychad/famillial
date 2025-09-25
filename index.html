@@ -97,9 +97,7 @@
   </dialog>
 
   <script>
-/* ----------------------------
-  Simple client-side family site (enhanced)
-  ---------------------------- */
+const API_BASE = 'https://famille-server-production.up.railway.app/api';
 
 const ACCOUNTS = [
   { username: 'Damien', password: 'Admin13072005', role: 'admin', color: '#1a73e8' }, // blue
@@ -118,19 +116,15 @@ function loadState(){
 function saveState(s){ localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
 
 let state = loadState();
-state.posts = state.posts || [];
-state.messages = state.messages || [];
 state.users = state.users || ACCOUNTS.map(a=>({ username:a.username, role:a.role, color:a.color, avatar:null }));
 saveState(state);
 
 let currentUser = null;
 
-/* Helpers */
 const el = id => document.getElementById(id);
 const uid = () => 'id'+Math.random().toString(36).slice(2,9);
 const fmtDate = d => new Date(d).toLocaleString();
 
-/* UI nodes */
 const loginSection = el('login-section');
 const boardSection = el('board-section');
 const roomSection = el('room-section');
@@ -142,6 +136,26 @@ const avatarDialog = el('profile-dialog');
 
 const postTpl = document.getElementById('post-template');
 const pollTpl = document.getElementById('poll-template');
+
+/* Fetch helpers */
+async function fetchPostsFromServer() {
+  const res = await fetch(`${API_BASE}/posts`);
+  if (!res.ok) return [];
+  return await res.json();
+}
+async function fetchMessagesFromServer() {
+  const res = await fetch(`${API_BASE}/messages`);
+  if (!res.ok) return [];
+  return await res.json();
+}
+async function postToServer(formData) {
+  const res = await fetch(`${API_BASE}/posts`, { method: 'POST', body: formData });
+  return await res.json();
+}
+async function messageToServer(formData) {
+  const res = await fetch(`${API_BASE}/messages`, { method: 'POST', body: formData });
+  return await res.json();
+}
 
 /* Auth */
 function showMessage(txt, elId='login-msg'){ el(elId).textContent = txt; setTimeout(()=>{ if(el(elId).textContent===txt) el(elId).textContent=''; },3000); }
@@ -161,12 +175,15 @@ el('btn-guest').addEventListener('click', () => {
   onLogin();
 });
 
-function onLogin(){
+async function onLogin(){
   loginSection.classList.add('hidden');
   boardSection.classList.remove('hidden');
   roomSection.classList.remove('hidden');
   document.body.classList.add('room-active');
   renderUserArea();
+  // LOAD posts/messages from server!
+  state.posts = await fetchPostsFromServer();
+  state.messages = await fetchMessagesFromServer();
   renderPosts();
   renderMessages();
   renderRecipientOptions();
@@ -205,7 +222,7 @@ function renderUserArea(){
   userArea.appendChild(userWrap);
 }
 
-/* Profile dialog */
+/* Profile dialog (unchanged, still uses local storage for avatars) */
 function openProfileDialog(){
   const avatarInput = el('avatar-input');
   const preview = el('avatar-preview');
@@ -236,7 +253,7 @@ function openProfileDialog(){
 /* Posts */
 function renderPosts(){
   postsEl.innerHTML = '';
-  const sorted = state.posts.slice().sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
+  const sorted = (state.posts || []).slice().sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
   sorted.forEach(p => {
     const node = postTpl.content.cloneNode(true);
     node.querySelector('.post-title').textContent = p.title;
@@ -266,12 +283,12 @@ function renderPosts(){
     } else commentsWrap.classList.add('hidden');
 
     const btnComment = postEl.querySelector('.btn-comment');
-    btnComment.onclick = () => {
+    btnComment.onclick = async () => {
       const txt = prompt('Comment text');
       if(!txt) return;
+      // Add to local copy and just re-render (not saved server-side since backend doesn't support comments yet)
       p.comments = p.comments || [];
       p.comments.push({ user: currentUser.username, text: txt, date: new Date().toISOString() });
-      savePosts();
       renderPosts();
     };
 
@@ -284,8 +301,6 @@ function renderPosts(){
     postsEl.appendChild(node);
   });
 }
-
-function savePosts(){ state.posts = state.posts; saveState(state); }
 
 /* Poll UI (unchanged) */
 function showPollDialog(p){
@@ -303,7 +318,6 @@ function showPollDialog(p){
       Object.keys(p.votes).forEach(k => { p.votes[k] = (p.votes[k]||[]).filter(u=>u!==currentUser.username); });
       p.votes[id] = p.votes[id] || [];
       if(!p.votes[id].includes(currentUser.username)) p.votes[id].push(currentUser.username);
-      savePosts();
       renderPosts();
       showResults();
     };
@@ -333,7 +347,7 @@ function showPollDialog(p){
 /* Messages */
 function renderMessages(){
   messagesEl.innerHTML = '';
-  const mine = state.messages.filter(m => m.recipient === currentUser.username || m.sender === currentUser.username)
+  const mine = (state.messages||[]).filter(m => m.recipient === currentUser.username || m.sender === currentUser.username)
                             .sort((a,b)=> new Date(b.date)-new Date(a.date));
   if(mine.length===0) messagesEl.textContent = 'No messages';
   else {
@@ -348,7 +362,7 @@ function renderMessages(){
 }
 
 /* Send message with optional image */
-el('btn-send-msg').addEventListener('click', () => {
+el('btn-send-msg').addEventListener('click', async () => {
   const body = el('msg-input').value.trim();
   const fileInput = el('msg-image');
   const file = fileInput.files && fileInput.files[0];
@@ -356,46 +370,47 @@ el('btn-send-msg').addEventListener('click', () => {
   let recipient = currentUser.username;
   if(currentUser.role==='admin') recipient = msgRecipient.value || currentUser.username;
 
-  if(file){
-    const reader = new FileReader();
-    reader.onload = () => {
-      state.messages.push({ id: uid(), sender: currentUser.username, recipient, body, date: new Date().toISOString(), read: false, image: reader.result });
-      saveState(state);
-      el('msg-input').value=''; fileInput.value=''; el('msg-preview').classList.add('hidden'); renderMessages();
-    };
-    reader.readAsDataURL(file);
-  } else {
-    state.messages.push({ id: uid(), sender: currentUser.username, recipient, body, date: new Date().toISOString(), read: false });
-    saveState(state);
-    el('msg-input').value='';
-    renderMessages();
-  }
+  const formData = new FormData();
+  formData.append('sender', currentUser.username);
+  formData.append('recipient', recipient);
+  formData.append('body', body);
+  if(file) formData.append('image', file);
+
+  await messageToServer(formData); // Save to server
+  state.messages = await fetchMessagesFromServer(); // Re-load
+  el('msg-input').value=''; fileInput.value=''; el('msg-preview').classList.add('hidden');
+  renderMessages();
 });
 
-/* New post / poll */
-el('btn-new-post').addEventListener('click', () => {
+/* New post / poll (now posts to server!) */
+el('btn-new-post').addEventListener('click', async () => {
   if(currentUser.role !== 'admin') return alert('Only admin can post news.');
   const title = prompt('Post title');
   if(!title) return;
   const body = prompt('Post body (optional)');
   const attach = confirm('Attach an image to this post? (select OK to choose file)');
+  const formData = new FormData();
+  formData.append('title', title);
+  formData.append('body', body || '');
+  formData.append('author', currentUser.username);
   if(attach){
     const inp = document.createElement('input'); inp.type='file'; inp.accept='image/*';
-    inp.onchange = (e) => {
+    inp.onchange = async (e) => {
       const f = e.target.files[0]; if(!f) return;
-      const r = new FileReader(); r.onload = () => {
-        const post = { id: uid(), title, body, author: currentUser.username, kind: 'news', image: r.result, createdAt: new Date().toISOString(), comments: [] };
-        state.posts.push(post); savePosts(); renderPosts();
-      }; r.readAsDataURL(f);
+      formData.append('image', f);
+      await postToServer(formData); // Save to server
+      state.posts = await fetchPostsFromServer(); // Re-load
+      renderPosts();
     };
     inp.click();
   } else {
-    const post = { id: uid(), title, body, author: currentUser.username, kind: 'news', createdAt: new Date().toISOString(), comments: [] };
-    state.posts.push(post); savePosts(); renderPosts();
+    await postToServer(formData);
+    state.posts = await fetchPostsFromServer();
+    renderPosts();
   }
 });
 
-el('btn-new-poll').addEventListener('click', () => {
+el('btn-new-poll').addEventListener('click', async () => {
   if(currentUser.role !== 'admin') return alert('Only admin can create polls.');
   const title = prompt('Poll title');
   if(!title) return;
@@ -403,8 +418,15 @@ el('btn-new-poll').addEventListener('click', () => {
   if(!raw) return;
   const parts = raw.split('|').map(s=>s.trim()).filter(Boolean);
   const options = parts.map(p=>({ id: uid(), label: p }));
+  // Save as a post with kind: 'poll'
+  const formData = new FormData();
+  formData.append('title', title);
+  formData.append('body', '');
+  formData.append('author', currentUser.username);
+  // Backend does not support options/votes yet, so store it only locally for now
   const post = { id: uid(), title, body: '', author: currentUser.username, kind: 'poll', options, votes: {}, createdAt: new Date().toISOString(), comments: [] };
-  state.posts.push(post); savePosts(); renderPosts();
+  state.posts.push(post);
+  renderPosts();
 });
 
 /* Utilities */
